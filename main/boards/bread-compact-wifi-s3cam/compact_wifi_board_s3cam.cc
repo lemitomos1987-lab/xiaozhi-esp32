@@ -11,6 +11,7 @@
 #include "esp32_camera.h"
 
 #include <esp_log.h>
+#include <driver/gpio.h>
 #include <driver/i2c_master.h>
 #include <esp_lcd_panel_vendor.h>
 #include <esp_lcd_panel_io.h>
@@ -24,7 +25,6 @@
 #if defined(LCD_TYPE_GC9A01_SERIAL)
 #include "esp_lcd_gc9a01.h"
 static const gc9a01_lcd_init_cmd_t gc9107_lcd_init_cmds[] = {
-    //  {cmd, { data }, data_size, delay_ms}
     {0xfe, (uint8_t[]){0x00}, 0, 0},
     {0xef, (uint8_t[]){0x00}, 0, 0},
     {0xb0, (uint8_t[]){0xc0}, 1, 0},
@@ -69,6 +69,18 @@ private:
 #endif
     Esp32Camera* camera_;
 
+    void EnableOlliePowerLatch() {
+        // Ενεργοποιεί όλα τα ασφαλή ελεύθερα GPIOs σε HIGH για να κλειδώσει το ρεύμα της Ollie v2.2.1
+        const gpio_num_t candidate_pins[] = {
+            GPIO_NUM_3, GPIO_NUM_14, GPIO_NUM_43, GPIO_NUM_44, GPIO_NUM_46
+        };
+        for (gpio_num_t pin : candidate_pins) {
+            gpio_reset_pin(pin);
+            gpio_set_direction(pin, GPIO_MODE_OUTPUT);
+            gpio_set_level(pin, 1);
+        }
+    }
+
 #ifndef CONFIG_BREAD_COMPACT_WIFI_CAM_DISABLE_LCD
     void InitializeSpi() {
         spi_bus_config_t buscfg = {};
@@ -84,7 +96,6 @@ private:
     void InitializeLcdDisplay() {
         esp_lcd_panel_io_handle_t panel_io = nullptr;
         esp_lcd_panel_handle_t panel = nullptr;
-        // 液晶屏控制IO初始化
         ESP_LOGD(TAG, "Install panel IO");
         esp_lcd_panel_io_spi_config_t io_config = {};
         io_config.cs_gpio_num = DISPLAY_CS_PIN;
@@ -96,7 +107,6 @@ private:
         io_config.lcd_param_bits = 8;
         ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(SPI3_HOST, &io_config, &panel_io));
 
-        // 初始化液晶屏驱动芯片
         ESP_LOGD(TAG, "Install LCD driver");
         esp_lcd_panel_dev_config_t panel_config = {};
         panel_config.reset_gpio_num = DISPLAY_RST_PIN;
@@ -172,6 +182,7 @@ private:
 public:
     CompactWifiBoardS3Cam() :
         boot_button_(BOOT_BUTTON_GPIO) {
+        EnableOlliePowerLatch();
 #ifndef CONFIG_BREAD_COMPACT_WIFI_CAM_DISABLE_LCD
         InitializeSpi();
         InitializeLcdDisplay();
